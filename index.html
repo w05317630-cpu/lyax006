@@ -5109,6 +5109,20 @@ border-top: none;
                                                                                                    id="setting-max-memory"
                                                                                                    value="10" min="1">
                 </div>
+                	<hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
+<!-- AI Proactive Chat Settings for Private Chat -->
+<div class="form-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <label for="private-ai-proactive-chat-toggle" style="margin-bottom:0;">开启AI后台回复</label>
+        <input type="checkbox" id="private-ai-proactive-chat-toggle" style="width: auto;">
+    </div>
+    <div id="private-ai-proactive-options" style="display: none;">
+        <label for="private-ai-proactive-chat-delay">无回复超过 (分钟)</label>
+        <input type="number" id="private-ai-proactive-chat-delay" min="1" placeholder="例如：30">
+        <label for="private-ai-proactive-chat-interval" style="margin-top: 10px;">AI后台回复间隔时间 (分钟)</label>
+        <input type="number" id="private-ai-proactive-chat-interval" min="1" placeholder="例如：60">
+    </div>
+</div>
                 <div class="form-group"><label for="setting-chat-bg-upload" class="btn btn-primary">更换聊天背景</label><input
                         type="file" id="setting-chat-bg-upload" accept="image/*" style="display:none;"></div>
                 <button type="submit" class="btn btn-primary">保存设置</button>
@@ -11715,6 +11729,160 @@ if (db.apiSettings && db.apiSettings.timePerceptionEnabled) {
 }
 // --- 时间感知功能注入点 结束 ---
 
+let isCheckingInactivity = false;
+
+/**
+ * 设置AI主动回复系统的主定时器
+ */
+function setupProactiveAiSystem() {
+    // 每分钟检查一次
+    setInterval(checkAllChatsForInactivity, 60 * 1000);
+    console.log("AI后台回复系统已启动。");
+}
+
+/**
+ * 遍历所有私聊，在满足条件时触发AI主动行为
+ */
+async function checkAllChatsForInactivity() {
+    if (isCheckingInactivity) {
+        return;
+    }
+    isCheckingInactivity = true;
+    console.log("正在检查用户不活跃私聊...");
+
+    const now = Date.now();
+
+    // 只处理私聊，移除群聊
+    for (const character of db.characters) {
+        // 检查此聊天的独立设置
+        if (!character.aiProactiveChatEnabled || !character.aiProactiveChatDelay || character.aiProactiveChatDelay <= 0) {
+            continue; // 如果此聊天未开启后台回复，则跳过
+        }
+        
+        if (!character.history || character.history.length === 0) {
+            continue; // 跳过空聊天
+        }
+
+        // 找到最后一条来自用户的消息
+        const lastUserMessage = [...character.history].reverse().find(m => m.role === 'user');
+
+        // 如果没有用户消息，则无法判断不活跃状态
+        if (!lastUserMessage) {
+            continue;
+        }
+
+        const timeSinceUserLastSpoke = now - lastUserMessage.timestamp;
+        const initialDelayMs = character.aiProactiveChatDelay * 60 * 1000;
+
+        // 如果用户不活跃的时间尚未达到初始延迟，则跳过
+        if (timeSinceUserLastSpoke < initialDelayMs) {
+            continue;
+        }
+        
+        // 此时，确认用户已处于不活跃状态，现在判断是否应该发送消息
+
+        const lastMessage = character.history[character.history.length - 1];
+        const timeSinceLastMessage = now - lastMessage.timestamp;
+        // 如果未设置间隔，则默认使用初始延迟作为间隔
+        const intervalMs = (character.aiProactiveChatInterval > 0 ? character.aiProactiveChatInterval : character.aiProactiveChatDelay) * 60 * 1000;
+
+        // 在以下两种情况下发送消息：
+        // 1. 最后一条消息是用户发的（说明这是第一次触发后台回复）。
+        // 2. 最后一条消息是AI发的（说明是后续的后台回复），且距离上次发送已超过设定的间隔时间。
+        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)) {
+            console.log(`检测到不活跃私聊: ${character.name || character.remarkName}。触发AI后台回复。`);
+            
+            // 100%发送消息，移除动态互动
+            await triggerProactiveMessage(character, 'private');
+            
+            // 等待5秒，避免对API造成过大压力
+            await new Promise(resolve => setTimeout(resolve, 5000)); 
+        }
+    }
+
+    isCheckingInactivity = false;
+}
+
+/**
+ * 生成并发送AI的主动消息（私聊专用）
+ */
+async function triggerProactiveMessage(character, type) {
+    const systemPrompt = `[system: 用户 ${character.myName} 已经有段时间没有回复了。请你根据自己的人设和我们之前的对话，主动发起一个新的话题或者用温柔的方式询问对方正在做什么，来重新激活对话。你的回复必须自然，就像是真实的人在关心对方一样。]`;
+    
+    const proactivePromptMessage = {
+        id: `proactive_${Date.now()}`,
+        role: 'user',
+        content: systemPrompt,
+        parts: [{ type: 'text', text: systemPrompt }],
+        timestamp: Date.now()
+    };
+    
+    character.history.push(proactivePromptMessage);
+
+    try {
+        const fullSystemPrompt = generatePrivateSystemPrompt(character);
+        const historyForApi = character.history.slice(-character.maxMemory);
+        
+        const messages = [
+            { role: 'system', content: fullSystemPrompt },
+            ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
+        ];
+        
+        const aiResponseText = await callAiApi(messages);
+        character.history.pop();
+        
+        const cleanedResponse = await processAiCommands(aiResponseText, character);
+        const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
+        
+        // 直接处理消息，不再放入队列
+        if (replies.length > 0) {
+            for (const replyContent of replies) {
+                const message = {
+                    id: `msg_proactive_${Date.now()}_${Math.random()}`,
+                    role: 'assistant',
+                    content: replyContent.trim(),
+                    parts: [{ type: 'text', text: replyContent.trim() }],
+                    timestamp: Date.now(),
+                };
+                
+                // 直接将消息添加到历史记录
+                character.history.push(message);
+            }
+
+            // 立即保存数据
+            await saveData();
+
+            // 立即刷新聊天列表UI
+            renderChatList();
+    
+            // 发出通知
+            addNotificationToQueue({
+                avatar: character.avatar,
+                text: `<strong>${character.name || character.remarkName}</strong><br>给你发来了一条新消息...`,
+                chatId: character.id,
+                type: 'private'
+            });
+            
+            console.log(`AI已向 ${character.name || character.remarkName} 发送主动消息`);
+        }
+
+    } catch (error) {
+        console.error(`AI后台回复失败 for ${character.name || character.remarkName}:`, error);
+        character.history.pop();
+    }
+}
+
+/**
+ * 手动触发AI主动回复（可用于测试）
+ */
+function triggerManualProactiveReply(characterId) {
+    const character = db.characters.find(c => c.id === characterId);
+    if (character) {
+        console.log(`手动触发AI主动回复给: ${character.name || character.remarkName}`);
+        triggerProactiveMessage(character, 'private');
+    }
+}
+            
 let messageContent;
 const systemRegex = /\[system:.*?\]|\[system-display:.*?\]/;
 const inviteRegex = /\[.*?邀请.*?加入群聊\]/;
@@ -15610,3 +15778,4 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
