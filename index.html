@@ -10912,6 +10912,206 @@ ${unreadBadgeHTML}`; /* <-- 将红点元素移动到这里 */
 
             cancelMultiSelectBtn.addEventListener('click', exitMultiSelectMode);
             deleteSelectedBtn.addEventListener('click', deleteSelectedMessages);
+
+            // ==================== AI主动回复系统 ====================
+let isCheckingInactivity = false;
+let proactiveAiInterval = null;
+
+/**
+ * 初始化AI主动回复系统
+ */
+function initProactiveAiSystem() {
+    // 先停止已有的定时器
+    if (proactiveAiInterval) {
+        clearInterval(proactiveAiInterval);
+    }
+    
+    // 检查全局设置是否开启
+    const isEnabled = document.getElementById('private-ai-proactive-chat-toggle').checked;
+    const delay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value) || 30;
+    const interval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value) || 60;
+    
+    if (isEnabled) {
+        // 启动检查系统
+        proactiveAiInterval = setInterval(checkAllChatsForInactivity, 60 * 1000);
+        console.log(`AI后台回复系统已启动 - 延迟:${delay}分钟, 间隔:${interval}分钟`);
+        
+        // 立即执行一次检查
+        setTimeout(checkAllChatsForInactivity, 2000);
+    } else {
+        console.log("AI后台回复系统已关闭");
+    }
+}
+
+/**
+ * 设置AI主动回复系统的主定时器
+ */
+function setupProactiveAiSystem() {
+    // 页面加载后初始化
+    setTimeout(initProactiveAiSystem, 1000);
+    
+    // 监听设置变化
+    document.getElementById('private-ai-proactive-chat-toggle').addEventListener('change', initProactiveAiSystem);
+    document.getElementById('private-ai-proactive-chat-delay').addEventListener('change', initProactiveAiSystem);
+    document.getElementById('private-ai-proactive-chat-interval').addEventListener('change', initProactiveAiSystem);
+}
+
+/**
+ * 遍历所有私聊，在满足条件时触发AI主动行为
+ */
+async function checkAllChatsForInactivity() {
+    if (isCheckingInactivity) {
+        return;
+    }
+    isCheckingInactivity = true;
+    console.log("正在检查用户不活跃私聊...", new Date().toLocaleTimeString());
+
+    const now = Date.now();
+    const globalDelay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value) || 30;
+    const globalInterval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value) || 60;
+
+    // 只处理私聊
+    for (const character of db.characters) {
+        // 检查全局设置是否开启
+        if (!document.getElementById('private-ai-proactive-chat-toggle').checked) {
+            continue;
+        }
+        
+        if (!character.history || character.history.length === 0) {
+            continue; // 跳过空聊天
+        }
+
+        // 找到最后一条来自用户的消息
+        const lastUserMessage = [...character.history].reverse().find(m => m.role === 'user');
+
+        // 如果没有用户消息，则跳过
+        if (!lastUserMessage) {
+            continue;
+        }
+
+        const timeSinceUserLastSpoke = now - lastUserMessage.timestamp;
+        const initialDelayMs = globalDelay * 60 * 1000;
+
+        // 如果用户不活跃的时间尚未达到初始延迟，则跳过
+        if (timeSinceUserLastSpoke < initialDelayMs) {
+            continue;
+        }
+        
+        // 检查最后一条消息
+        const lastMessage = character.history[character.history.length - 1];
+        const timeSinceLastMessage = now - lastMessage.timestamp;
+        const intervalMs = globalInterval * 60 * 1000;
+
+        console.log(`检查聊天 ${character.name}:`, {
+            lastUserMessageTime: new Date(lastUserMessage.timestamp).toLocaleTimeString(),
+            timeSinceUserLastSpoke: Math.round(timeSinceUserLastSpoke / 60000) + '分钟',
+            lastMessageRole: lastMessage.role,
+            timeSinceLastMessage: Math.round(timeSinceLastMessage / 60000) + '分钟',
+            needsReply: lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)
+        });
+
+        // 触发条件：最后一条是用户消息，或者最后一条是AI消息但超过间隔时间
+        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)) {
+            console.log(`检测到不活跃私聊: ${character.name || character.remarkName}。触发AI后台回复。`);
+            
+            await triggerProactiveMessage(character, 'private');
+            
+            // 等待3秒，避免对API造成过大压力
+            await new Promise(resolve => setTimeout(resolve, 3000)); 
+        }
+    }
+
+    isCheckingInactivity = false;
+}
+
+/**
+ * 生成并发送AI的主动消息（私聊专用）
+ */
+async function triggerProactiveMessage(character, type) {
+    const systemPrompt = `[system: 用户 ${character.myName || '用户'} 已经有段时间没有回复了。请你根据自己的人设和我们之前的对话，主动发起一个新的话题或者用温柔的方式询问对方正在做什么，来重新激活对话。你的回复必须自然，就像是真实的人在关心对方一样。请只回复一条消息，不要标记为系统消息。]`;
+    
+    const proactivePromptMessage = {
+        id: `proactive_${Date.now()}`,
+        role: 'user',
+        content: systemPrompt,
+        parts: [{ type: 'text', text: systemPrompt }],
+        timestamp: Date.now()
+    };
+    
+    character.history.push(proactivePromptMessage);
+
+    try {
+        // 使用您现有的API调用函数
+        const fullSystemPrompt = generatePrivateSystemPrompt(character);
+        const historyForApi = character.history.slice(-character.maxMemory);
+        
+        const messages = [
+            { role: 'system', content: fullSystemPrompt },
+            ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
+        ];
+        
+        console.log("发送AI请求...");
+        const aiResponseText = await callAiApi(messages);
+        
+        // 移除我们添加的提示消息
+        character.history.pop();
+        
+        const cleanedResponse = await processAiCommands(aiResponseText, character);
+        const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
+        
+        if (replies.length > 0) {
+            for (const replyContent of replies) {
+                const message = {
+                    id: `msg_proactive_${Date.now()}_${Math.random()}`,
+                    role: 'assistant',
+                    content: replyContent.trim(),
+                    parts: [{ type: 'text', text: replyContent.trim() }],
+                    timestamp: Date.now(),
+                };
+                
+                character.history.push(message);
+                console.log(`AI主动消息: ${replyContent.trim()}`);
+            }
+
+            // 保存数据
+            await saveData();
+
+            // 刷新UI
+            renderChatList();
+    
+            // 发送通知
+            addNotificationToQueue({
+                avatar: character.avatar,
+                text: `<strong>${character.name || character.remarkName}</strong><br>${replies[0].substring(0, 50)}...`,
+                chatId: character.id,
+                type: 'private'
+            });
+            
+            console.log(`AI已向 ${character.name || character.remarkName} 发送主动消息`);
+        }
+
+    } catch (error) {
+        console.error(`AI后台回复失败 for ${character.name || character.remarkName}:`, error);
+        character.history.pop();
+    }
+}
+
+/**
+ * 手动触发AI主动回复（测试用）
+ */
+function triggerManualProactiveReply(characterId) {
+    const character = db.characters.find(c => c.id === characterId);
+    if (character) {
+        console.log(`手动触发AI主动回复给: ${character.name || character.remarkName}`);
+        triggerProactiveMessage(character, 'private');
+    }
+}
+
+// 页面加载后启动系统
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(setupProactiveAiSystem, 2000);
+});
+// ==================== AI主动回复系统结束 ====================
             
             // 新增：绑定取消引用按钮事件
             document.getElementById('cancel-reply-btn').addEventListener('click', cancelQuoteReply);
@@ -15665,5 +15865,6 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
 
 
