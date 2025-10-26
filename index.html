@@ -5116,13 +5116,37 @@ border-top: none;
         <label for="private-ai-proactive-chat-toggle" style="margin-bottom:0;">开启AI后台回复</label>
         <input type="checkbox" id="private-ai-proactive-chat-toggle" style="width: auto;">
     </div>
-    <div id="private-ai-proactive-options" style="display: none;">
-        <label for="private-ai-proactive-chat-delay">无回复超过 (分钟)</label>
-        <input type="number" id="private-ai-proactive-chat-delay" min="1" placeholder="例如：30">
-        <label for="private-ai-proactive-chat-interval" style="margin-top: 10px;">AI后台回复间隔时间 (分钟)</label>
-        <input type="number" id="private-ai-proactive-chat-interval" min="1" placeholder="例如：60">
+    <div id="private-ai-proactive-options" style="display: none; margin-top: 15px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+        <div class="form-group">
+            <label for="private-ai-proactive-chat-delay">无回复超过 (分钟)</label>
+            <input type="number" id="private-ai-proactive-chat-delay" min="1" placeholder="例如：30" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        <div class="form-group">
+            <label for="private-ai-proactive-chat-interval">AI后台回复间隔时间 (分钟)</label>
+            <input type="number" id="private-ai-proactive-chat-interval" min="1" placeholder="例如：60" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        <div style="font-size: 12px; color: #666; margin-top: 10px;">
+            <p>💡 设置说明：</p>
+            <ul style="margin: 5px 0; padding-left: 15px;">
+                <li><strong>无回复超过</strong>：用户多久不回复后触发AI主动消息</li>
+                <li><strong>回复间隔</strong>：AI连续发送主动消息的最小间隔时间</li>
+            </ul>
+        </div>
     </div>
 </div>
+
+<script>
+// 控制AI后台回复选项的显示/隐藏
+document.getElementById('private-ai-proactive-chat-toggle').addEventListener('change', function() {
+    const optionsContainer = document.getElementById('private-ai-proactive-options');
+    if (this.checked) {
+        optionsContainer.style.display = 'block';
+    } else {
+        optionsContainer.style.display = 'none';
+    }
+});
+</script>
+                
                 <div class="form-group"><label for="setting-chat-bg-upload" class="btn btn-primary">更换聊天背景</label><input
                         type="file" id="setting-chat-bg-upload" accept="image/*" style="display:none;"></div>
                 <button type="submit" class="btn btn-primary">保存设置</button>
@@ -15778,4 +15802,5 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
 
