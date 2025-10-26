@@ -10871,181 +10871,6 @@ ${unreadBadgeHTML}`; /* <-- 将红点元素移动到这里 */
 
             cancelMultiSelectBtn.addEventListener('click', exitMultiSelectMode);
             deleteSelectedBtn.addEventListener('click', deleteSelectedMessages);
-
-            let isCheckingInactivity = false;
-
-/**
- * Sets up the main timer for checking user inactivity across all chats.
- */
-function setupProactiveAiSystem() {
-    // Check every minute
-    setInterval(checkAllChatsForInactivity, 60 * 1000);
-    console.log("AI后台回复系统已启动。");
-}
-
-/**
- * Iterates through all chats and triggers proactive AI actions if conditions are met.
- */
-async function checkAllChatsForInactivity() {
-    if (isCheckingInactivity) {
-        return;
-    }
-    isCheckingInactivity = true;
-    console.log("正在检查用户不活跃聊天...");
-
-    const now = Date.now();
-    // 只检查私聊
-    const allChats = db.characters.map(c => ({ chat: c, type: 'private' }));
-
-    for (const { chat, type } of allChats) {
-        // 检查此聊天的独立设置
-        if (!chat.aiProactiveChatEnabled || !chat.aiProactiveChatDelay || chat.aiProactiveChatDelay <= 0) {
-            continue; // 如果此聊天未开启后台回复，则跳过
-        }
-        
-        if (!chat.history || chat.history.length === 0) {
-            continue; // 跳过空聊天
-        }
-
-        // 找到最后一条来自用户的消息
-        const lastUserMessage = [...chat.history].reverse().find(m => m.role === 'user');
-
-        // 如果没有用户消息，则无法判断不活跃状态
-        if (!lastUserMessage) {
-            continue;
-        }
-
-        const timeSinceUserLastSpoke = now - lastUserMessage.timestamp;
-        const initialDelayMs = chat.aiProactiveChatDelay * 60 * 1000;
-
-        // 如果用户不活跃的时间尚未达到初始延迟，则跳过
-        if (timeSinceUserLastSpoke < initialDelayMs) {
-            continue;
-        }
-        
-        // 此时，确认用户已处于不活跃状态，现在判断是否应该发送消息
-
-        const lastMessage = chat.history[chat.history.length - 1];
-        const timeSinceLastMessage = now - lastMessage.timestamp;
-        // 如果未设置间隔，则默认使用初始延迟作为间隔
-        const intervalMs = (chat.aiProactiveChatInterval > 0 ? chat.aiProactiveChatInterval : chat.aiProactiveChatDelay) * 60 * 1000;
-
-        // 在以下两种情况下发送消息：
-        // 1. 最后一条消息是用户发的（说明这是第一次触发后台回复）。
-        // 2. 最后一条消息是AI发的（说明是后续的后台回复），且距离上次发送已超过设定的间隔时间。
-        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)) {
-            console.log(`检测到不活跃聊天: ${chat.name || chat.remarkName}。触发AI后台回复。`);
-            
-            // 直接触发私聊回复，100%发送消息
-            await triggerProactivePrivateReply(chat);
-            
-            // 等待5秒，避免对API造成过大压力
-            await new Promise(resolve => setTimeout(resolve, 5000)); 
-        }
-    }
-
-    isCheckingInactivity = false;
-}
-
-/**
- * Triggers a proactive action for a private chat (only send message).
- * @param {object} character - The character object for the private chat.
- */
-async function triggerProactivePrivateReply(character) {
-    // 100% 发送消息，不要朋友圈互动
-    await triggerProactiveMessage(character, 'private');
-}
-
-/**
- * Generates and sends a proactive message from the AI.
- * @param {object} chatObject - The character or group object.
- * @param {string} type - 'private' or 'group'.
- */
-async function triggerProactiveMessage(chatObject, type) {
-    let systemPrompt = '';
-    if (type === 'private') {
-        systemPrompt = `[system: 用户 ${chatObject.myName} 已经有段时间没有回复了。请你根据自己的人设和我们之前的对话，主动发起一个新的话题或者用温柔的方式询问对方正在做什么，来重新激活对话。你的回复必须自然，就像是真实的人在关心对方一样。]`;
-    }
-    const proactivePromptMessage = {
-        id: `proactive_${Date.now()}`,
-        role: 'user',
-        content: systemPrompt,
-        parts: [{ type: 'text', text: systemPrompt }],
-        timestamp: Date.now()
-    };
-    chatObject.history.push(proactivePromptMessage);
-
-    try {
-        let fullSystemPrompt;
-        let historyForApi;
-        if (type === 'private') {
-            fullSystemPrompt = generatePrivateSystemPrompt(chatObject);
-            historyForApi = chatObject.history.slice(-chatObject.maxMemory);
-        }
-        const messages = [
-            { role: 'system', content: fullSystemPrompt },
-            ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
-        ];
-        const aiResponseText = await callAiApi(messages);
-        chatObject.history.pop();
-        
-        const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
-        const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
-        
-        // 直接处理消息，不再放入队列
-        if (replies.length > 0) {
-            for (const replyContent of replies) {
-                const message = {
-                    id: `msg_proactive_${Date.now()}_${Math.random()}`,
-                    role: 'assistant',
-                    content: replyContent.trim(),
-                    parts: [{ type: 'text', text: replyContent.trim() }],
-                    timestamp: Date.now(),
-                };
-                // 直接将消息添加到历史记录
-                chatObject.history.push(message);
-            }
-
-            // 立即保存数据
-            await saveData();
-
-            // 立即刷新聊天列表UI
-            renderChatList();
-    
-            // 最后再发出通知
-            addNotificationToQueue({
-                avatar: chatObject.avatar,
-                text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
-                chatId: chatObject.id,
-                type: type
-            });
-        }
-
-    } catch (error) {
-        console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
-        chatObject.history.pop();
-    }
-}
-            
-            // 新增：加载私聊的后台回复设置
-const proactiveToggle = document.getElementById('private-ai-proactive-chat-toggle');
-const proactiveOptions = document.getElementById('private-ai-proactive-options');
-const proactiveDelayInput = document.getElementById('private-ai-proactive-chat-delay');
-const proactiveIntervalInput = document.getElementById('private-ai-proactive-chat-interval');
-
-proactiveToggle.checked = e.aiProactiveChatEnabled || false;
-proactiveDelayInput.value = e.aiProactiveChatDelay || '';
-proactiveIntervalInput.value = e.aiProactiveChatInterval || '';
-proactiveOptions.style.display = proactiveToggle.checked ? 'block' : 'none';
-
-proactiveToggle.onchange = (evt) => {
-    proactiveOptions.style.display = evt.target.checked ? 'block' : 'none';
-};
-            
-            // 新增：保存私聊的后台回复设置
-e.aiProactiveChatEnabled = document.getElementById('private-ai-proactive-chat-toggle').checked;
-e.aiProactiveChatDelay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value, 10) || 0;
-e.aiProactiveChatInterval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value, 10) || 0;
             
             // 新增：绑定取消引用按钮事件
             document.getElementById('cancel-reply-btn').addEventListener('click', cancelQuoteReply);
@@ -12000,6 +11825,180 @@ async function withdrawMessage(messageId) {
     showToast('消息已撤回');
 }
 
+        let isCheckingInactivity = false;
+
+/**
+ * Sets up the main timer for checking user inactivity across all chats.
+ */
+function setupProactiveAiSystem() {
+    // Check every minute
+    setInterval(checkAllChatsForInactivity, 60 * 1000);
+    console.log("AI后台回复系统已启动。");
+}
+
+/**
+ * Iterates through all chats and triggers proactive AI actions if conditions are met.
+ */
+async function checkAllChatsForInactivity() {
+    if (isCheckingInactivity) {
+        return;
+    }
+    isCheckingInactivity = true;
+    console.log("正在检查用户不活跃聊天...");
+
+    const now = Date.now();
+    // 只检查私聊
+    const allChats = db.characters.map(c => ({ chat: c, type: 'private' }));
+
+    for (const { chat, type } of allChats) {
+        // 检查此聊天的独立设置
+        if (!chat.aiProactiveChatEnabled || !chat.aiProactiveChatDelay || chat.aiProactiveChatDelay <= 0) {
+            continue; // 如果此聊天未开启后台回复，则跳过
+        }
+        
+        if (!chat.history || chat.history.length === 0) {
+            continue; // 跳过空聊天
+        }
+
+        // 找到最后一条来自用户的消息
+        const lastUserMessage = [...chat.history].reverse().find(m => m.role === 'user');
+
+        // 如果没有用户消息，则无法判断不活跃状态
+        if (!lastUserMessage) {
+            continue;
+        }
+
+        const timeSinceUserLastSpoke = now - lastUserMessage.timestamp;
+        const initialDelayMs = chat.aiProactiveChatDelay * 60 * 1000;
+
+        // 如果用户不活跃的时间尚未达到初始延迟，则跳过
+        if (timeSinceUserLastSpoke < initialDelayMs) {
+            continue;
+        }
+        
+        // 此时，确认用户已处于不活跃状态，现在判断是否应该发送消息
+
+        const lastMessage = chat.history[chat.history.length - 1];
+        const timeSinceLastMessage = now - lastMessage.timestamp;
+        // 如果未设置间隔，则默认使用初始延迟作为间隔
+        const intervalMs = (chat.aiProactiveChatInterval > 0 ? chat.aiProactiveChatInterval : chat.aiProactiveChatDelay) * 60 * 1000;
+
+        // 在以下两种情况下发送消息：
+        // 1. 最后一条消息是用户发的（说明这是第一次触发后台回复）。
+        // 2. 最后一条消息是AI发的（说明是后续的后台回复），且距离上次发送已超过设定的间隔时间。
+        if (lastMessage.role === 'user' || (lastMessage.role === 'assistant' && timeSinceLastMessage > intervalMs)) {
+            console.log(`检测到不活跃聊天: ${chat.name || chat.remarkName}。触发AI后台回复。`);
+            
+            // 直接触发私聊回复，100%发送消息
+            await triggerProactivePrivateReply(chat);
+            
+            // 等待5秒，避免对API造成过大压力
+            await new Promise(resolve => setTimeout(resolve, 5000)); 
+        }
+    }
+
+    isCheckingInactivity = false;
+}
+
+/**
+ * Triggers a proactive action for a private chat (only send message).
+ * @param {object} character - The character object for the private chat.
+ */
+async function triggerProactivePrivateReply(character) {
+    // 100% 发送消息，不要朋友圈互动
+    await triggerProactiveMessage(character, 'private');
+}
+
+/**
+ * Generates and sends a proactive message from the AI.
+ * @param {object} chatObject - The character or group object.
+ * @param {string} type - 'private' or 'group'.
+ */
+async function triggerProactiveMessage(chatObject, type) {
+    let systemPrompt = '';
+    if (type === 'private') {
+        systemPrompt = `[system: 用户 ${chatObject.myName} 已经有段时间没有回复了。请你根据自己的人设和我们之前的对话，主动发起一个新的话题或者用温柔的方式询问对方正在做什么，来重新激活对话。你的回复必须自然，就像是真实的人在关心对方一样。]`;
+    }
+    const proactivePromptMessage = {
+        id: `proactive_${Date.now()}`,
+        role: 'user',
+        content: systemPrompt,
+        parts: [{ type: 'text', text: systemPrompt }],
+        timestamp: Date.now()
+    };
+    chatObject.history.push(proactivePromptMessage);
+
+    try {
+        let fullSystemPrompt;
+        let historyForApi;
+        if (type === 'private') {
+            fullSystemPrompt = generatePrivateSystemPrompt(chatObject);
+            historyForApi = chatObject.history.slice(-chatObject.maxMemory);
+        }
+        const messages = [
+            { role: 'system', content: fullSystemPrompt },
+            ...historyForApi.map(msg => ({ role: msg.role, content: msg.content }))
+        ];
+        const aiResponseText = await callAiApi(messages);
+        chatObject.history.pop();
+        
+        const cleanedResponse = await processAiCommands(aiResponseText, chatObject);
+        const replies = cleanedResponse.split('\n').filter(line => line.trim() !== '');
+        
+        // 直接处理消息，不再放入队列
+        if (replies.length > 0) {
+            for (const replyContent of replies) {
+                const message = {
+                    id: `msg_proactive_${Date.now()}_${Math.random()}`,
+                    role: 'assistant',
+                    content: replyContent.trim(),
+                    parts: [{ type: 'text', text: replyContent.trim() }],
+                    timestamp: Date.now(),
+                };
+                // 直接将消息添加到历史记录
+                chatObject.history.push(message);
+            }
+
+            // 立即保存数据
+            await saveData();
+
+            // 立即刷新聊天列表UI
+            renderChatList();
+    
+            // 最后再发出通知
+            addNotificationToQueue({
+                avatar: chatObject.avatar,
+                text: `<strong>${chatObject.name || chatObject.remarkName}</strong><br>给你发来了一条新消息...`,
+                chatId: chatObject.id,
+                type: type
+            });
+        }
+
+    } catch (error) {
+        console.error(`AI后台回复失败 for ${chatObject.name || chatObject.remarkName}:`, error);
+        chatObject.history.pop();
+    }
+}
+        // 新增：加载私聊的后台回复设置
+const proactiveToggle = document.getElementById('private-ai-proactive-chat-toggle');
+const proactiveOptions = document.getElementById('private-ai-proactive-options');
+const proactiveDelayInput = document.getElementById('private-ai-proactive-chat-delay');
+const proactiveIntervalInput = document.getElementById('private-ai-proactive-chat-interval');
+
+proactiveToggle.checked = e.aiProactiveChatEnabled || false;
+proactiveDelayInput.value = e.aiProactiveChatDelay || '';
+proactiveIntervalInput.value = e.aiProactiveChatInterval || '';
+proactiveOptions.style.display = proactiveToggle.checked ? 'block' : 'none';
+
+proactiveToggle.onchange = (evt) => {
+    proactiveOptions.style.display = evt.target.checked ? 'block' : 'none';
+};
+
+        // 新增：保存私聊的后台回复设置
+e.aiProactiveChatEnabled = document.getElementById('private-ai-proactive-chat-toggle').checked;
+e.aiProactiveChatDelay = parseInt(document.getElementById('private-ai-proactive-chat-delay').value, 10) || 0;
+e.aiProactiveChatInterval = parseInt(document.getElementById('private-ai-proactive-chat-interval').value, 10) || 0;
+        
 // 辅助函数1：格式化时间戳 YYYY-MM-DD HH:MM:SS
 function getFormattedTimestamp(date) {
     const Y = date.getFullYear();
@@ -15799,6 +15798,7 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
 
 
 
