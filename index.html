@@ -5109,6 +5109,20 @@ border-top: none;
                                                                                                    id="setting-max-memory"
                                                                                                    value="10" min="1">
                 </div>
+                <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
+<!-- AI Proactive Chat Settings for Private Chat -->
+<div class="form-group">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <label for="private-ai-proactive-chat-toggle" style="margin-bottom:0;">开启AI后台回复</label>
+        <input type="checkbox" id="private-ai-proactive-chat-toggle" style="width: auto;">
+    </div>
+    <div id="private-ai-proactive-options" style="display: none;">
+        <label for="private-ai-proactive-chat-delay">无回复超过 (分钟)</label>
+        <input type="number" id="private-ai-proactive-chat-delay" min="1" placeholder="例如：30">
+        <label for="private-ai-proactive-chat-interval" style="margin-top: 10px;">AI后台回复间隔时间 (分钟)</label>
+        <input type="number" id="private-ai-proactive-chat-interval" min="1" placeholder="例如：60">
+    </div>
+</div>
                 <div class="form-group"><label for="setting-chat-bg-upload" class="btn btn-primary">更换聊天背景</label><input
                         type="file" id="setting-chat-bg-upload" accept="image/*" style="display:none;"></div>
                 <button type="submit" class="btn btn-primary">保存设置</button>
@@ -15610,3 +15624,4 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
