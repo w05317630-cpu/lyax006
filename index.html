@@ -6784,40 +6784,6 @@ border-top: none;
             const detailsList = document.getElementById('storage-details-list');
             let myChart = null;
 
-            const worldBooksBefore = triggeredWorldBooks.filter(wb => wb.position === 'before').map(wb => wb.content).join('\n');
-            const worldBooksAfter = triggeredWorldBooks.filter(wb => wb.position === 'after').map(wb => wb.content).join('\n');
-
-        // === 修改开始：优先处理线下模式 ===
-        // ▼▼▼ 核心修改：检查角色自身的线下模式状态，并重写指令 ▼▼▼
-    if (character.isOfflineMode) {
-        let offlinePrompt = `你正在与我进行线下场景的角色扮演。你的任务是以第三人称的视角，用富有文学性的叙事风格来描述场景、你（角色）的行为、心理活动和对话。
-
-[角色设定]
-A. 你的角色名是：${character.realName}。我的称呼是：${character.myName}。
-B. 你的角色设定是：${character.persona || "一个友好、乐于助人的伙伴。"}
-C. 我的人设是：${character.myPersona || "无特定人设"}
-
-[世界观与补充设定]
-${worldBooksBefore || ''}
-${worldBooksAfter || ''}
-
-[核心输出规则 (极其重要)]
-1.  你的所有回复都必须且只能使用一种格式：\`[${character.realName}的消息：{你的叙述内容}]\`
-2.  在“{你的叙述内容}”部分，你必须像写小说一样进行描述。
-3.  **绝对禁止** 使用任何括号，例如 \`()\`, \`【】\` 或 \`[]\` 来包裹动作或心理活动。
-4.  **绝对禁止** 使用任何引号，例如 \`“”\` 或 \`""\` 来包裹对话。所有对话都必须自然地融入到叙事中。
-5.  你的回复应该是1-3段连贯的场景描述，总字数控制在100-300字之间。
-
-[格式示例]
-- **错误的格式 (禁止使用)**: \`[offline-scene: (他拿起茶杯，笑了笑) “天气真好。” 【心里却在想别的事情。】]\`
-- **正确的格式 (必须遵循)**: \`[${character.realName}的消息：他端起桌上的茶杯，指尖轻轻摩挲着温热的杯壁。一丝若有若无的笑意浮现在他唇边，他抬眼望向窗外，轻声说天气真好。然而，他的思绪早已飘远，并未真正关注窗外的景色。]\`
-
-请严格遵守以上规则，开始你的叙事。`;
-        
-        return offlinePrompt;
-    }
-            // ▲▲▲ 修改结束 ▲▲▲
-            // === 修改结束：如果不是线下模式，则执行原来的逻辑 ===
             // 定义一个共享的颜色调色板
             const colorPalette = ['#ff80ab', '#90caf9', '#a5d6a7', '#fff59d', '#b39ddb', '#ffcc80'];
 
@@ -12480,6 +12446,41 @@ return `${seconds}秒`;
             return prompt;
         }
 
+            const worldBooksBefore = triggeredWorldBooks.filter(wb => wb.position === 'before').map(wb => wb.content).join('\n');
+            const worldBooksAfter = triggeredWorldBooks.filter(wb => wb.position === 'after').map(wb => wb.content).join('\n');
+        
+        // === 修改开始：优先处理线下模式 ===
+        // ▼▼▼ 核心修改：检查角色自身的线下模式状态，并重写指令 ▼▼▼
+    if (character.isOfflineMode) {
+        let offlinePrompt = `你正在与我进行线下场景的角色扮演。你的任务是以第三人称的视角，用富有文学性的叙事风格来描述场景、你（角色）的行为、心理活动和对话。
+
+[角色设定]
+A. 你的角色名是：${character.realName}。我的称呼是：${character.myName}。
+B. 你的角色设定是：${character.persona || "一个友好、乐于助人的伙伴。"}
+C. 我的人设是：${character.myPersona || "无特定人设"}
+
+[世界观与补充设定]
+${worldBooksBefore || ''}
+${worldBooksAfter || ''}
+
+[核心输出规则 (极其重要)]
+1.  你的所有回复都必须且只能使用一种格式：\`[${character.realName}的消息：{你的叙述内容}]\`
+2.  在“{你的叙述内容}”部分，你必须像写小说一样进行描述。
+3.  **绝对禁止** 使用任何括号，例如 \`()\`, \`【】\` 或 \`[]\` 来包裹动作或心理活动。
+4.  **绝对禁止** 使用任何引号，例如 \`“”\` 或 \`""\` 来包裹对话。所有对话都必须自然地融入到叙事中。
+5.  你的回复应该是1-3段连贯的场景描述，总字数控制在100-300字之间。
+
+[格式示例]
+- **错误的格式 (禁止使用)**: \`[offline-scene: (他拿起茶杯，笑了笑) “天气真好。” 【心里却在想别的事情。】]\`
+- **正确的格式 (必须遵循)**: \`[${character.realName}的消息：他端起桌上的茶杯，指尖轻轻摩挲着温热的杯壁。一丝若有若无的笑意浮现在他唇边，他抬眼望向窗外，轻声说天气真好。然而，他的思绪早已飘远，并未真正关注窗外的景色。]\`
+
+请严格遵守以上规则，开始你的叙事。`;
+        
+        return offlinePrompt;
+    }
+            // ▲▲▲ 修改结束 ▲▲▲
+            // === 修改结束：如果不是线下模式，则执行原来的逻辑 ===
+
         function generateGroupSystemPrompt(group) {
             const worldBooksBefore = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'before')).filter(Boolean).map(wb => wb.content).join('\n');
             const worldBooksAfter = (group.worldBookIds || []).map(id => db.worldBooks.find(wb => wb.id === id && wb.position === 'after')).filter(Boolean).map(wb => wb.content).join('\n');
@@ -15649,6 +15650,7 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
 
 
 
