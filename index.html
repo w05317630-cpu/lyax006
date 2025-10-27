@@ -5104,16 +5104,16 @@ border-top: none;
                             style="margin-top: 10px; width: auto; padding: 5px 15px; font-size: 14px;">恢复默认
                     </button>
                 </div>
-                <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
-                <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
-                    <label for="setting-offline-mode" style="margin-bottom: 0;">开启线下模式 (仅此角色)</label>
-                    <input type="checkbox" id="setting-offline-mode" style="width: auto; height: 20px;">
-               </div>
                <div class="panel panel-sm" style="padding:12px;border-radius:10px;border:1px solid var(--border-color,#e8e8ef);background:var(--panel-bg,#fff);box-shadow:var(--panel-shadow,0 4px 12px rgba(20,20,30,0.04));margin:10px 0;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><label for="bubble-preset-select" style="width:88px;color:var(--muted,#667);font-size:13px;">气泡</label><select id="bubble-preset-select" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--input-border,#e6e6ea);background:var(--input-bg,#fff);font-size:14px;"><option value="">— 选择预设 —</option></select><button type="button" id="apply-preset-btn" class="btn btn-primary" style="margin-left:8px;padding:7px 10px;border-radius:8px;">应用</button></div><div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;"><label style="width:88px;color:var(--muted,#667);font-size:13px;">外观操作</label><button type="button" id="save-preset-btn" class="btn" style="padding:7px 10px;border-radius:8px;">另存为</button><button type="button" id="manage-presets-btn" class="btn" style="padding:7px 10px;border-radius:8px;">管理</button></div></div>
                 <div class="form-group"><label for="setting-max-memory">最大记忆轮数</label><input type="number"
                                                                                                    id="setting-max-memory"
                                                                                                    value="10" min="1">
                 </div>
+                <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
+                <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+                    <label for="setting-offline-mode" style="margin-bottom: 0;">开启线下模式 (仅此角色)</label>
+                    <input type="checkbox" id="setting-offline-mode" style="width: auto; height: 20px;">
+               </div>
                 <div class="form-group"><label for="setting-chat-bg-upload" class="btn btn-primary">更换聊天背景</label><input
                         type="file" id="setting-chat-bg-upload" accept="image/*" style="display:none;"></div>
                 <button type="submit" class="btn btn-primary">保存设置</button>
@@ -15649,5 +15649,6 @@ function renderForumPosts(posts) {
 </body>
 
 </html>
+
 
 
